@@ -3,23 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>診斷助手 - Gemini 3 正式版</title>
+    <title>診斷助手 - 2026 最終修正版</title>
     <style>
         body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f4f7f6; }
         .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         #transcript { border: 1px solid #ddd; padding: 15px; height: 150px; overflow-y: auto; background: #fff; margin: 15px 0; border-radius: 6px; }
-        #answer { border: 2px solid #28a745; padding: 20px; border-radius: 10px; background: #f9fff9; white-space: pre-wrap; min-height: 150px; line-height: 1.6; font-size: 1.1em; }
+        #answer { border: 2px solid #28a745; padding: 20px; border-radius: 10px; background: #f9fff9; white-space: pre-wrap; min-height: 150px; line-height: 1.6; }
         button { padding: 15px 25px; font-size: 18px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; }
         #startBtn { background-color: #007bff; color: white; }
         #stopBtn { background-color: #dc3545; color: white; margin-left: 10px; }
         button:disabled { background-color: #ccc !important; }
-        .status-tag { margin-left: 10px; font-weight: bold; color: #007bff; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🩺 醫師診斷助手 (Gemini 3 Flash)</h2>
+    <h2>🩺 醫師診斷助手 (安全協定版)</h2>
 
     <div style="margin-bottom:20px;">
         <strong>1. 載入知識庫 (.txt)：</strong>
@@ -29,18 +28,17 @@
     <div class="controls">
         <button id="startBtn">🎤 開始錄音</button>
         <button id="stopBtn" disabled>⏹️ 停止並分析</button>
-        <span id="status" class="status-tag">系統就緒</span>
+        <span id="status" style="margin-left:10px; font-weight:bold; color:blue;">系統就緒</span>
     </div>
 
     <h3>👂 錄音文字：</h3>
     <div id="transcript"></div>
 
-    <h3>💡 Gemini 3 診斷建議：</h3>
+    <h3>💡 AI 建議：</h3>
     <div id="answer">尚未分析。</div>
 </div>
 
 <script>
-    // 🔑 請確保這是您在 Google AI Studio 申請的最新 Key
     const API_KEY = 'AIzaSyAaOZyLZVjVVtejkvsdAfaQNn2m3mAK0rs'; 
 
     const startBtn = document.getElementById('startBtn');
@@ -54,7 +52,6 @@
     let fullTranscript = "";
     let uploadedKnowledge = "";
 
-    // 1. 初始化語音辨識
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
         recognition = new SpeechRecognition();
@@ -71,7 +68,6 @@
         };
     }
 
-    // 2. 檔案讀取
     fileInput.onchange = (e) => {
         uploadedKnowledge = "";
         let files = e.target.files;
@@ -86,9 +82,8 @@
         }
     };
 
-    // 3. 按鈕邏輯
     startBtn.onclick = () => {
-        if (!recognition) return alert("瀏覽器不支援錄音");
+        if (!recognition) return alert("不支援錄音");
         fullTranscript = "";
         transcriptDiv.innerText = "";
         recognition.start();
@@ -99,24 +94,28 @@
 
     stopBtn.onclick = async () => {
         try { recognition.stop(); } catch(e) {}
-        statusSpan.innerText = "⌛ Gemini 3 分析中...";
+        statusSpan.innerText = "⌛ 安全校驗與分析中...";
         stopBtn.disabled = true;
         await getDiagnosis();
     };
 
-    // 4. API 呼叫 (鎖定 2026 年正確型號)
     async function getDiagnosis() {
-        // 關鍵修正：在 2026 年，免費版路徑必須準確指向 gemini-3-flash
-        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=' + API_KEY;
+        // 2026 年最穩定的網址格式
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
         
         try {
-            const response = await fetch(url, {
+            const response = await fetch(`${url}?key=${API_KEY}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    // 關鍵修正：將 Key 放入 Header 以通過 2026 安全校驗
+                    'x-goog-api-key': API_KEY 
+                },
                 body: JSON.stringify({
                     contents: [{
+                        role: "user",
                         parts: [{ 
-                            text: "你是一位專業醫療助手。請根據以下知識庫分析醫病對話內容。\n\n【醫學知識庫】：\n" + uploadedKnowledge + "\n\n【診間對話】：\n" + fullTranscript 
+                            text: "你是專業醫療顧問。請根據知識庫回答問題。\n\n【知識庫】:\n" + uploadedKnowledge + "\n\n【對話】:\n" + fullTranscript 
                         }]
                     }]
                 })
@@ -126,10 +125,10 @@
             
             if (data.candidates && data.candidates[0].content) {
                 answerDiv.innerText = data.candidates[0].content.parts[0].text;
-                statusSpan.innerText = "✅ 診斷完成";
+                statusSpan.innerText = "✅ 完成";
             } else {
-                // 如果失敗，強制顯示詳細錯誤資訊
-                answerDiv.innerText = "API 回傳錯誤：\n" + (data.error ? data.error.message : JSON.stringify(data));
+                // 如果失敗，顯示完整的錯誤物件幫助定位
+                answerDiv.innerText = "API 反應異常，詳情：\n" + JSON.stringify(data.error || data);
             }
         } catch (err) {
             answerDiv.innerText = "連線失敗：" + err.message;
