@@ -2,172 +2,148 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>診間紀錄 - 醫療分段採集穩定版</title>
+    <title>診間紀錄 - 模型自適應穩定版</title>
     <style>
-        body { font-family: "Microsoft JhengHei", sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f0f4f8; }
-        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
-        .status-tag { padding: 8px 15px; border-radius: 8px; font-weight: bold; margin-bottom: 15px; display: inline-block; }
-        .ready { background: #e3f2fd; color: #0d47a1; }
-        .recording { background: #ffebee; color: #b71c1c; border: 1px solid #ffcdd2; animation: blink 2s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
-        #answer { border: 2px solid #2e7d32; padding: 20px; border-radius: 12px; background: #fafffa; white-space: pre-wrap; line-height: 1.8; }
-        button { padding: 12px 20px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin-right: 10px; margin-bottom: 10px; transition: 0.3s; }
-        .btn-blue { background: #1976d2; color: white; }
-        .btn-red { background: #d32f2f; color: white; }
-        .btn-green { background: #388e3c; color: white; }
-        #transcriptPreview { width: 100%; height: 200px; margin-top: 15px; border: 1px solid #ccc; padding: 10px; border-radius: 8px; box-sizing: border-box; background: #fff; overflow-y: auto; font-size: 15px; }
-        .log-box { background: #222; color: #0f0; padding: 10px; font-family: monospace; font-size: 12px; height: 100px; overflow-y: auto; border-radius: 5px; margin-bottom: 10px; }
+        body { font-family: "Microsoft JhengHei", sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f4f7f6; }
+        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 5px 25px rgba(0,0,0,0.1); }
+        .status-tag { padding: 10px 15px; border-radius: 8px; font-weight: bold; margin-bottom: 20px; display: inline-block; transition: 0.3s; }
+        .idle { background: #e9ecef; color: #495057; }
+        .ready { background: #d4edda; color: #155724; }
+        .recording { background: #ffebee; color: #b71c1c; border: 1px solid #ffcdd2; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        #answer { border: 2px solid #28a745; padding: 20px; border-radius: 12px; background: #fff; min-height: 200px; white-space: pre-wrap; line-height: 1.8; font-size: 1.1em; }
+        button { padding: 15px 25px; font-size: 16px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin-right: 10px; transition: 0.3s; }
+        .btn-blue { background: #007bff; color: white; }
+        .btn-green { background: #28a745; color: white; }
+        .btn-red { background: #dc3545; color: white; }
+        .log-box { background: #1e1e1e; color: #00ff00; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; height: 120px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #333; }
+        button:disabled { background: #ccc !important; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🩺 診間紀錄 (分段抗干擾版)</h2>
-    <div id="status" class="status-tag ready">等待 API Key 啟動</div>
-    
-    <div class="log-box" id="debugLog">系統準備就緒...</div>
+    <h2>🩺 診間紀錄 (模型自適應音訊版)</h2>
+    <div id="status" class="status-tag idle">1. 請設定 API Key</div>
+
+    <div class="log-box" id="debugLog">系統初始化完成，等待 API Key...</div>
 
     <div>
-        <button onclick="inputKey()" class="btn-blue">🔑 1. 設定 API Key</button>
-        <button id="startBtn" class="btn-green" disabled>🎤 2. 開始問診</button>
-        <button id="stopBtn" class="btn-red" disabled>⏹️ 3. 停止並存檔</button>
+        <button onclick="inputKey()" class="btn-blue">🔑 設定 API Key</button>
+        <button id="startBtn" class="btn-green" disabled>🎤 開始錄音</button>
+        <button id="stopBtn" class="btn-red" disabled>⏹️ 停止並自動分析</button>
     </div>
 
-    <div>
-        <strong>👂 文字即時預覽 (每分鐘自動存檔)：</strong>
-        <div id="transcriptPreview">尚未錄音...</div>
-    </div>
-
-    <button id="analyzeBtn" class="btn-blue" style="width:100%; margin-top:15px;" onclick="executeAnalysis()">🚀 4. 送交 AI 整理摘要</button>
-
-    <h3>💡 AI 診斷建議：</h3>
-    <div id="answer">摘要將顯示在此...</div>
+    <h3>💡 AI 診斷摘要 (含原始音訊解析)：</h3>
+    <div id="answer">請在問診結束後點擊停止，AI 會自動掃描您的 API 權限，挑選最適模型並進行音訊轉文字與摘要。</div>
 </div>
 
 <script>
     let _USER_KEY = "";
-    let recognition, finalTranscript = "";
-    let isRecording = false;
+    let auto_model_id = "";
     let mediaRecorder, audioChunks = [];
-    let relayTimer;
 
-    function log(msg) {
+    function log(msg, type = "info") {
         const box = document.getElementById('debugLog');
-        box.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
+        const prefix = type === "err" ? "❌ " : "✅ ";
+        box.innerHTML += `[${new Date().toLocaleTimeString()}] ${prefix}${msg}<br>`;
         box.scrollTop = box.scrollHeight;
     }
 
+    // 1. 自動偵測模型邏輯
     async function inputKey() {
-        const key = prompt("請貼入您的 API Key:");
+        const key = prompt("請貼入您的 Google API Key:");
         if (key) {
             _USER_KEY = key.trim();
-            document.getElementById('status').innerText = "✅ 系統就緒";
-            document.getElementById('startBtn').disabled = false;
-            log("API Key 已儲存");
+            log("正在掃描可用模型權限...");
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${_USER_KEY}`);
+                const data = await res.json();
+                if (data.models) {
+                    // 優先尋找支援 Multimodal (音訊) 的模型
+                    const found = data.models.find(m => m.name.includes('gemini-1.5-pro')) || 
+                                  data.models.find(m => m.name.includes('gemini-1.5-flash')) ||
+                                  data.models.find(m => m.name.includes('flash'));
+                    
+                    auto_model_id = found ? found.name : data.models[0].name;
+                    
+                    document.getElementById('status').innerText = `✅ 就緒: ${auto_model_id.split('/')[1]}`;
+                    document.getElementById('status').className = "status-tag ready";
+                    document.getElementById('startBtn').disabled = false;
+                    log(`偵測成功！自動配對引擎：${auto_model_id}`);
+                } else {
+                    log("無法讀取模型清單，請確認 Key 是否正確。", "err");
+                }
+            } catch (e) { log("網路連線失敗，無法偵測模型。", "err"); }
         }
     }
 
-    function startRecognition() {
-        if (!isRecording) return;
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (recognition) recognition.stop();
-
-        recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'zh-TW';
-
-        recognition.onresult = (e) => {
-            let interim = "";
-            for (let i = e.resultIndex; i < e.results.length; ++i) {
-                if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript + "\n";
-                else interim += e.results[i][0].transcript;
-            }
-            document.getElementById('transcriptPreview').innerText = finalTranscript + interim;
-        };
-
-        recognition.onend = () => {
-            if (isRecording) {
-                log("辨識週期結束，嘗試自動接力...");
-                setTimeout(startRecognition, 500);
-            }
-        };
-
-        try { recognition.start(); } catch(e) { log("辨識啟動失敗，重試中..."); }
-    }
-
+    // 2. 錄音邏輯
     document.getElementById('startBtn').onclick = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = () => {
+            mediaRecorder.onstop = async () => {
                 const blob = new Blob(audioChunks, { type: 'audio/webm' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = `診間原音_${new Date().getTime()}.webm`;
-                a.click();
-                log("✅ 聲音檔 (.webm) 下載完成");
+                log("錄音結束，正將音訊轉為 Base64 格式...");
+                
+                // 轉碼並傳送
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                reader.onloadend = () => {
+                    const audioBase64 = reader.result.split(',')[1];
+                    sendToGemini(audioBase64);
+                };
             };
 
-            isRecording = true;
-            finalTranscript = "";
             audioChunks = [];
-            
             mediaRecorder.start();
-            startRecognition();
-
-            // 強制接力：每 60 秒換一次引擎，避免瀏覽器一分半鐘切斷
-            relayTimer = setInterval(() => {
-                if (isRecording) {
-                    log("⏱️ 進行 60 秒健康檢查，強制刷新辨識引擎...");
-                    startRecognition();
-                }
-            }, 60000);
-
-            document.getElementById('status').innerText = "🔴 錄音與辨識運行中";
+            document.getElementById('status').innerText = "🔴 診間錄音中...";
             document.getElementById('status').className = "status-tag recording";
             document.getElementById('startBtn').disabled = true;
             document.getElementById('stopBtn').disabled = false;
-        } catch (err) { log("麥克風權限錯誤"); }
+            log("音訊採集軌道已鎖定。");
+        } catch (err) { log("麥克風啟動失敗: " + err.message, "err"); }
     };
 
     document.getElementById('stopBtn').onclick = () => {
-        isRecording = false;
-        clearInterval(relayTimer);
-        if(recognition) recognition.stop();
         mediaRecorder.stop();
-        document.getElementById('status').innerText = "✅ 錄製結束，請點擊分析";
-        document.getElementById('status').className = "status-tag ready";
+        document.getElementById('status').innerText = "⌛ 正在進行跨模態 AI 分析...";
+        document.getElementById('status').className = "status-tag idle";
         document.getElementById('stopBtn').disabled = true;
-        document.getElementById('startBtn').disabled = false;
     };
 
-    async function executeAnalysis() {
-        const textToAnalyze = document.getElementById('transcriptPreview').innerText;
-        if (!textToAnalyze || textToAnalyze === "尚未錄音...") return alert("目前沒有文字可供分析");
+    // 3. 呼叫偵測到的模型
+    async function sendToGemini(base64Data) {
+        log(`發送音訊數據至 ${auto_model_id.split('/')[1]}...`);
+        const url = `https://generativelanguage.googleapis.com/v1beta/${auto_model_id}:generateContent?key=${_USER_KEY}`;
         
-        document.getElementById('answer').innerText = "⌛ AI 正在整理醫學摘要，請稍候...";
-        log("發送分析請求...");
-
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${_USER_KEY}`, {
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: "請整理成結構化醫學摘要，標註語者(醫師/病患/家屬)：\n\n" + textToAnalyze }] }]
+                    contents: [{
+                        parts: [
+                            { text: "你是專業的醫學助理。這是一段診間錄音，請幫我：1. 轉譯對話內容並標註醫師與病患。 2. 整理一份標準的醫學摘要。 3. 列出初步診斷建議與處置建議。" },
+                            { inlineData: { mimeType: "audio/webm", data: base64Data } }
+                        ]
+                    }]
                 })
             });
+
             const data = await response.json();
-            if (data.candidates) {
+            if (data.candidates && data.candidates[0].content) {
                 document.getElementById('answer').innerText = data.candidates[0].content.parts[0].text;
-                log("🎉 AI 分析成功！");
+                log("🎉 摘要分析成功！");
+                document.getElementById('startBtn').disabled = false;
             } else {
-                alert("AI 回傳異常：" + JSON.stringify(data.error || data));
+                log("分析異常：" + JSON.stringify(data.error || data), "err");
+                document.getElementById('answer').innerText = "分析失敗，可能是音訊過長或模型限制。";
             }
-        } catch (err) { 
-            alert("分析失敗，可能是網路超時，請稍後再按一次分析。");
-            log("連線錯誤: " + err.message);
+        } catch (err) {
+            log("API 請求失敗: " + err.message, "err");
         }
     }
 </script>
