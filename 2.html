@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>診斷輔助工具 - 除錯加強版</title>
+    <style>
+        body { font-family: "Microsoft JhengHei", sans-serif; max-width: 900px; margin: 20px auto; padding: 20px; line-height: 1.6; background-color: #f4f7f6; }
+        .container { background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .setup-section { background-color: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #ffc107; }
+        #transcript { border: 1px solid #ddd; padding: 15px; height: 180px; overflow-y: auto; background: #fafafa; margin-bottom: 20px; border-radius: 4px; }
+        #answer { border: 2px solid #28a745; padding: 20px; margin-top: 20px; border-radius: 8px; background-color: #f8fff9; min-height: 150px; white-space: pre-wrap; }
+        .controls { margin-bottom: 20px; }
+        button { padding: 12px 24px; font-size: 16px; cursor: pointer; border: none; border-radius: 4px; transition: 0.3s; margin-right: 10px; font-weight: bold; }
+        #startBtn { background-color: #007bff; color: white; }
+        #stopBtn { background-color: #dc3545; color: white; }
+        #stopBtn:disabled { background-color: #ccc; }
+        .status { font-weight: bold; margin-left: 10px; }
+        .debug-hint { font-size: 0.85em; color: #d9534f; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🩺 醫師診斷輔助工具 (除錯版)</h2>
+
+    <div class="setup-section">
+        <strong>📍 第一步：載入診斷知識庫</strong><br>
+        <input type="file" id="fileInput" multiple accept=".txt">
+        <p class="debug-hint">※ 測試建議：若大檔案失敗，請先試著只載入一個只有幾行字的測試檔。</p>
+    </div>
+
+    <div class="controls">
+        <button id="startBtn">🎤 開始錄音</button>
+        <button id="stopBtn" disabled>⏹️ 停止並診斷</button>
+        <span id="status" class="status" style="color: #666;">系統就緒</span>
+    </div>
+
+    <h3>即時對話內容：</h3>
+    <div id="transcript">語音辨識內容...</div>
+
+    <h3>💡 AI 診斷建議：</h3>
+    <div id="answer">等待診斷指令。</div>
+    
+    <p style="font-size: 0.8em; color: #999; margin-top: 20px;">
+        提示：若遇到錯誤，請按下鍵盤 <b>F12</b> 並點擊 <b>Console</b> 查看詳細原始資料。
+    </p>
+</div>
+
+<script>
+    // ==========================================
+    // 🔑 請在此處填入您的 Gemini API Key
+    // ==========================================
+    const API_KEY = 'AIzaSyCzPXl1v87zj9NxQm3yEjmtXyXCs72WAkE'; 
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const transcriptDiv = document.getElementById('transcript');
+    const answerDiv = document.getElementById('answer');
+    const statusSpan = document.getElementById('status');
+    const fileInput = document.getElementById('fileInput');
+
+    let recognition;
+    let fullTranscript = "";
+    let uploadedKnowledge = "";
+
+    // 1. 檔案讀取功能
+    fileInput.onchange = function(e) {
+        const files = e.target.files;
+        if (files.length === 0) return;
+        uploadedKnowledge = ""; 
+        let loadedCount = 0;
+        for (let file of files) {
+            let reader = new FileReader();
+            reader.onload = function(event) {
+                uploadedKnowledge += `\n[文件: ${file.name}]\n` + event.target.result + "\n";
+                loadedCount++;
+                if (loadedCount === files.length) {
+                    statusSpan.innerText = "✅ 知識庫載入成功 (" + files.length + " 檔案)";
+                    statusSpan.style.color = "green";
+                }
+            };
+            reader.readAsText(file);
+        }
+    };
+
+    // 2. 語音辨識
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'zh-TW';
+
+        recognition.onresult = (event) => {
+            let interimTranscript = "";
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    fullTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+            transcriptDiv.innerHTML = fullTranscript + '<i style="color:gray">' + interimTranscript + '</i>';
+            transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+        };
+    }
+
+    // 3. 按鈕邏輯
+    startBtn.onclick = () => {
+        if (API_KEY === '在此貼上您的_API_KEY' || !API_KEY) {
+            alert("錯誤：請在 HTML 程式碼中填入 API_KEY");
+            return;
+        }
+        fullTranscript = "";
+        transcriptDiv.innerText = "";
+        recognition.start();
+        statusSpan.innerText = "🔴 錄音中...";
+        statusSpan.style.color = "red";
+        startBtn.disabled = true;
