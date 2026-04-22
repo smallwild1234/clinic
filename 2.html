@@ -3,49 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>診斷助手 - Gemini 3 旗艦版</title>
+    <title>診斷助手 - 醫師專用版</title>
     <style>
-        body { font-family: "Microsoft JhengHei", sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f4f7f6; color: #333; }
+        body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f4f7f6; }
         .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .section { background: #e8f4fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #007bff; }
-        #transcript { border: 1px solid #ddd; padding: 15px; height: 150px; overflow-y: auto; background: #fff; margin-bottom: 15px; border-radius: 6px; line-height: 1.6; }
-        #answer { border: 2px solid #28a745; padding: 20px; border-radius: 10px; background: #f9fff9; white-space: pre-wrap; min-height: 150px; font-size: 1.1em; line-height: 1.8; color: #1a531b; }
-        .controls { margin-bottom: 20px; }
-        button { padding: 12px 25px; font-size: 16px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
+        #transcript { border: 1px solid #ddd; padding: 15px; height: 150px; overflow-y: auto; background: #fff; margin: 15px 0; border-radius: 6px; }
+        #answer { border: 2px solid #28a745; padding: 20px; border-radius: 10px; background: #f9fff9; white-space: pre-wrap; min-height: 150px; }
+        button { padding: 15px 25px; font-size: 18px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; }
         #startBtn { background-color: #007bff; color: white; }
-        #startBtn:disabled { background-color: #aaa; cursor: not-allowed; }
         #stopBtn { background-color: #dc3545; color: white; margin-left: 10px; }
-        #stopBtn:disabled { background-color: #eee; color: #999; }
-        .status-tag { font-size: 0.9em; font-weight: bold; margin-left: 15px; color: #007bff; }
+        button:disabled { background-color: #ccc !important; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🩺 醫師診斷決策輔助系統 (Gemini 3 Flash)</h2>
+    <h2>🩺 醫師診斷助手 (Gemini 3 Flash 版)</h2>
 
-    <div class="section">
-        <strong>1. 載入知識庫 (.txt)：</strong>
+    <div style="margin-bottom:20px;">
+        <strong>1. 載入知識庫：</strong>
         <input type="file" id="fileInput" multiple accept=".txt">
     </div>
 
     <div class="controls">
         <button id="startBtn">🎤 開始錄音</button>
         <button id="stopBtn" disabled>⏹️ 停止並分析</button>
-        <span id="status" class="status-tag">系統就緒</span>
+        <span id="status" style="margin-left:10px; color:blue;">系統就緒</span>
     </div>
 
-    <h3>👂 即時對話辨識：</h3>
-    <div id="transcript">等待錄音中...</div>
+    <h3>👂 錄音內容：</h3>
+    <div id="transcript"></div>
 
-    <h3>💡 AI 診斷建議：</h3>
-    <div id="answer">尚未進行分析。</div>
+    <h3>💡 AI 建議：</h3>
+    <div id="answer">尚未分析。</div>
 </div>
 
 <script>
-    // ==========================================
-    // 🔑 API Key 設定 (請確認這組與截圖一致)
-    // ==========================================
+    // 🔑 API Key (根據您的截圖)
     const API_KEY = 'AIzaSyBfIbwNAKnDl-GlrkkH1Oxg4A6op0aAUYU'; 
 
     const startBtn = document.getElementById('startBtn');
@@ -59,28 +53,27 @@
     let fullTranscript = "";
     let uploadedKnowledge = "";
 
-    // 1. 初始化語音辨識
-    try {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'zh-TW';
+    // --- 1. 語音辨識 (簡單版) ---
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'zh-TW';
 
-            recognition.onresult = (event) => {
-                let interim = "";
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) fullTranscript += event.results[i][0].transcript;
-                    else interim += event.results[i][0].transcript;
-                }
-                transcriptDiv.innerHTML = fullTranscript + '<span style="color:gray">' + interim + '</span>';
-                transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
-            };
-        }
-    } catch (e) { console.error("語音初始化失敗", e); }
+        recognition.onresult = (event) => {
+            let interim = "";
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) fullTranscript += event.results[i][0].transcript;
+                else interim += event.results[i][0].transcript;
+            }
+            transcriptDiv.innerHTML = fullTranscript + '<span style="color:gray">' + interim + '</span>';
+        };
+        
+        recognition.onerror = (e) => { statusSpan.innerText = "錄音錯誤: " + e.error; };
+    }
 
-    // 2. 知識庫載入
+    // --- 2. 檔案載入 ---
     fileInput.onchange = (e) => {
         uploadedKnowledge = "";
         let files = e.target.files;
@@ -88,20 +81,59 @@
         for (let file of files) {
             let reader = new FileReader();
             reader.onload = (ev) => {
-                uploadedKnowledge += `\n[文件:${file.name}]\n${ev.target.result}\n`;
+                uploadedKnowledge += ev.target.result + "\n";
                 if (++count === files.length) statusSpan.innerText = "✅ 知識庫已載入";
             };
             reader.readAsText(file);
         }
     };
 
-    // 3. 按鈕邏輯
+    // --- 3. 開始錄音 ---
     startBtn.onclick = () => {
+        if (!recognition) {
+            alert("瀏覽器不支援錄音");
+            return;
+        }
         fullTranscript = "";
         transcriptDiv.innerText = "";
+        recognition.start();
+        statusSpan.innerText = "🔴 錄音中...";
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+    };
+
+    // --- 4. 停止並分析 ---
+    stopBtn.onclick = async () => {
+        recognition.stop();
+        statusSpan.innerText = "⌛ 分析中...";
+        stopBtn.disabled = true;
+        
+        // 直接使用最穩定的 Gemini 3 Flash 路徑
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=' + API_KEY;
+        
         try {
-            recognition.start();
-            statusSpan.innerText = "🔴 聽取診間對話中...";
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
-        } catch (e) { alert("錄
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ text: "知識庫：\n" + uploadedKnowledge + "\n對話：\n" + fullTranscript + "\n請給診斷建議。" }]
+                    }]
+                })
+            });
+
+            const data = await response.json();
+            if (data.candidates) {
+                answerDiv.innerText = data.candidates[0].content.parts[0].text;
+                statusSpan.innerText = "✅ 完成";
+            } else {
+                answerDiv.innerText = "分析失敗：" + JSON.stringify(data.error || data);
+            }
+        } catch (err) {
+            answerDiv.innerText = "網路錯誤：" + err.message;
+        }
+        startBtn.disabled = false;
+    };
+</script>
+</body>
+</html>
