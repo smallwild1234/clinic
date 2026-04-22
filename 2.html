@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>診斷助手 - 醫師終極版</title>
+    <title>診斷助手 - 醫師專用</title>
     <style>
         body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f4f7f6; }
         .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
@@ -13,12 +13,13 @@
         #startBtn { background-color: #007bff; color: white; }
         #stopBtn { background-color: #dc3545; color: white; margin-left: 10px; }
         button:disabled { background-color: #ccc !important; }
+        .status-tag { margin-left: 10px; font-weight: bold; color: #007bff; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🩺 醫師診斷助手 (全自動路徑版)</h2>
+    <h2>🩺 醫師診斷助手 (Gemini 3 Flash)</h2>
 
     <div style="margin-bottom:20px;">
         <strong>1. 載入知識庫 (.txt)：</strong>
@@ -28,7 +29,7 @@
     <div class="controls">
         <button id="startBtn">🎤 開始錄音</button>
         <button id="stopBtn" disabled>⏹️ 停止並分析</button>
-        <span id="status" style="margin-left:10px; color:blue;">狀態: 就緒</span>
+        <span id="status" class="status-tag">系統就緒</span>
     </div>
 
     <h3>👂 錄音文字：</h3>
@@ -40,7 +41,7 @@
 
 <script>
     // ==========================================
-    // 🔑 請在此貼上您「最新」申請的 API Key
+    // 🔑 請務必填入您在 AI Studio 申請到的最新 API Key
     // ==========================================
     const API_KEY = 'AIzaSyAaOZyLZVjVVtejkvsdAfaQNn2m3mAK0rs'; 
 
@@ -55,7 +56,7 @@
     let fullTranscript = "";
     let uploadedKnowledge = "";
 
-    // 1. 初始化錄音
+    // 1. 初始化語音辨識
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
         recognition = new SpeechRecognition();
@@ -72,7 +73,7 @@
         };
     }
 
-    // 2. 檔案載入
+    // 2. 檔案讀取
     fileInput.onchange = (e) => {
         uploadedKnowledge = "";
         let files = e.target.files;
@@ -80,75 +81,61 @@
         for (let file of files) {
             let reader = new FileReader();
             reader.onload = (ev) => {
-                uploadedKnowledge += `\n[檔案:${file.name}]\n${ev.target.result}\n`;
-                if (++count === files.length) statusSpan.innerText = "狀態: 知識庫已載入";
+                uploadedKnowledge += `\n[文件:${file.name}]\n${ev.target.result}\n`;
+                if (++count === files.length) statusSpan.innerText = "✅ 知識庫已就緒";
             };
             reader.readAsText(file);
         }
     };
 
+    // 3. 按鈕邏輯
     startBtn.onclick = () => {
-        if (!recognition) return alert("不支援錄音");
+        if (!recognition) return alert("瀏覽器不支援錄音");
         fullTranscript = "";
         transcriptDiv.innerText = "";
         recognition.start();
-        statusSpan.innerText = "狀態: 錄音中...";
+        statusSpan.innerText = "🔴 錄音中...";
         startBtn.disabled = true;
         stopBtn.disabled = false;
     };
 
     stopBtn.onclick = async () => {
         try { recognition.stop(); } catch(e) {}
-        statusSpan.innerText = "狀態: AI 多路徑偵測中...";
+        statusSpan.innerText = "⌛ 分析中...";
         stopBtn.disabled = true;
-        await tryGetDiagnosis();
+        await getDiagnosis();
     };
 
-    // 3. 全自動多模型備援邏輯
-    async function tryGetDiagnosis() {
-        // 這些是 Google API 內部真正的識別代號，而非介面名稱
-        const models = [
-            'gemini-1.5-flash',
-            'gemini-1.5-flash-8b',
-            'gemini-pro'
-        ];
+    // 4. API 呼叫 (回歸 v1beta 並使用正確的 Flash 名稱)
+    async function getDiagnosis() {
+        // 在 v1beta 路徑下，這個名稱是 2026 年最穩定的
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + API_KEY;
         
-        let success = false;
-        let lastError = "";
-
-        for (let modelName of models) {
-            if (success) break;
-            
-            // 嘗試 v1 正式版路徑 (比 v1beta 更穩定)
-            const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${API_KEY}`;
-            
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [{ text: "請根據知識庫內容分析醫病對話。\n\n知識庫：\n" + uploadedKnowledge + "\n\n對話：\n" + fullTranscript }]
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ 
+                            text: "你是一位專業醫療助手。請根據以下知識庫分析對話內容並給予醫師建議。\n\n【知識庫內容】：\n" + uploadedKnowledge + "\n\n【醫病對話內容】：\n" + fullTranscript 
                         }]
-                    })
-                });
+                    }]
+                })
+            });
 
-                const data = await response.json();
-
-                if (data.candidates && data.candidates[0].content) {
-                    answerDiv.innerText = data.candidates[0].content.parts[0].text;
-                    statusSpan.innerText = "✅ 分析完成 (使用引擎: " + modelName + ")";
-                    success = true;
-                } else {
-                    lastError = data.error ? data.error.message : JSON.stringify(data);
-                }
-            } catch (err) {
-                lastError = err.message;
+            const data = await response.json();
+            
+            if (data.candidates && data.candidates[0].content) {
+                answerDiv.innerText = data.candidates[0].content.parts[0].text;
+                statusSpan.innerText = "✅ 分析完成";
+            } else {
+                // 如果失敗，顯示 Google 回傳的原始訊息供排除錯誤
+                answerDiv.innerText = "分析失敗，錯誤代碼：" + (data.error ? data.error.message : "未知錯誤");
+                console.log("Debug Info:", data);
             }
-        }
-
-        if (!success) {
-            answerDiv.innerText = "所有路徑皆失敗。錯誤描述：" + lastError + "\n\n請確認您的 API Key 是否正確。";
+        } catch (err) {
+            answerDiv.innerText = "連線失敗：" + err.message;
         }
         startBtn.disabled = false;
     }
