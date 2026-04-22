@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>診斷助手 - Gemini 3.1 終極版</title>
+    <title>診斷助手 - 2026 高速版</title>
     <style>
         body { font-family: "Microsoft JhengHei", sans-serif; max-width: 850px; margin: 30px auto; padding: 20px; background-color: #f0f4f8; }
         .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
@@ -20,9 +20,9 @@
 <body>
 
 <div class="card">
-    <h2>🩺 醫師診斷決策輔助 (Gemini 3.1 Pro)</h2>
+    <h2>🩺 醫師診斷輔助 (Gemini 3.1 Flash-Lite)</h2>
     
-    <span id="status" class="status-bar">系統初始化中...</span>
+    <span id="status" class="status-bar">系統就緒</span>
 
     <div class="section">
         <strong>1. 載入醫學知識庫 (.txt)：</strong><br><br>
@@ -30,22 +30,21 @@
     </div>
 
     <div class="controls">
-        <button id="startBtn">🎤 開始診間錄音</button>
+        <button id="startBtn">🎤 開始錄音</button>
         <button id="stopBtn" disabled>⏹️ 停止並分析</button>
     </div>
 
-    <h3>👂 即時對話紀錄：</h3>
+    <h3>👂 對話紀錄：</h3>
     <div id="transcript"></div>
 
-    <h3>💡 AI 診斷與處置建議：</h3>
+    <h3>💡 診斷與處置建議：</h3>
     <div id="answer">等待分析...</div>
 </div>
 
 <script>
-    // 🔑 API Key
     const API_KEY = 'AIzaSyAaOZyLZVjVVtejkvsdAfaQNn2m3mAK0rs'; 
-    // 從您的掃描清單中選取最強的 3.1 Pro 模型
-    const MODEL_ID = 'gemini-3.1-pro-preview'; 
+    // 換成額度較高的 Flash-Lite 模型
+    const MODEL_ID = 'gemini-3.1-flash-lite-preview'; 
 
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -56,9 +55,8 @@
 
     let recognition, fullTranscript = "", uploadedKnowledge = "";
 
-    // 1. 初始化語音
-    try {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
         recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
@@ -70,45 +68,39 @@
                 else interim += e.results[i][0].transcript;
             }
             transcriptDiv.innerHTML = fullTranscript + '<span style="color:gray">' + interim + '</span>';
-            transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
         };
-        statusSpan.innerText = "✅ 系統就緒 (已連線: " + MODEL_ID + ")";
-    } catch (e) { statusSpan.innerText = "❌ 瀏覽器不支援語音"; }
+    }
 
-    // 2. 知識庫載入
     fileInput.onchange = (e) => {
         uploadedKnowledge = "";
         let count = 0;
         for (let file of e.target.files) {
             let reader = new FileReader();
             reader.onload = (ev) => {
-                uploadedKnowledge += `\n--- 知識庫文件: ${file.name} ---\n${ev.target.result}\n`;
+                uploadedKnowledge += `\n[文件:${file.name}]\n${ev.target.result}\n`;
                 if (++count === e.target.files.length) statusSpan.innerText = "✅ 知識庫載入完成";
             };
             reader.readAsText(file);
         }
     };
 
-    // 3. 錄音控制
     startBtn.onclick = () => {
         fullTranscript = "";
         transcriptDiv.innerText = "";
         recognition.start();
-        statusSpan.innerText = "🔴 診間錄製中...";
+        statusSpan.innerText = "🔴 診間錄音中...";
         startBtn.disabled = true;
         stopBtn.disabled = false;
     };
 
     stopBtn.onclick = async () => {
         recognition.stop();
-        statusSpan.innerText = "⌛ Gemini 3.1 正在深度分析知識庫與對話...";
+        statusSpan.innerText = "⌛ AI 分析中...";
         stopBtn.disabled = true;
         await getDiagnosis();
     };
 
-    // 4. 核心分析
     async function getDiagnosis() {
-        // 使用您清單中證實存在的 v1beta 路徑
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${API_KEY}`;
         
         try {
@@ -117,9 +109,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{
-                        parts: [{ 
-                            text: "你是一位精通多國語言的專業醫療大腦。請深入研究以下提供的『知識庫』內容，並結合『診間對話』給予醫師最精確的臨床建議、可能的診斷代碼及處置方案。\n\n【醫學知識庫內容】:\n" + uploadedKnowledge + "\n\n【醫病對話紀錄】:\n" + fullTranscript 
-                        }]
+                        parts: [{ text: "你是專業醫療顧問。請根據以下知識庫分析醫病對話內容。\n\n【知識庫內容】:\n" + uploadedKnowledge + "\n\n【診間對話內容】:\n" + fullTranscript }]
                     }]
                 })
             });
@@ -127,9 +117,9 @@
             const data = await response.json();
             if (data.candidates && data.candidates[0].content) {
                 answerDiv.innerText = data.candidates[0].content.parts[0].text;
-                statusSpan.innerText = "✅ 診斷生成完畢";
+                statusSpan.innerText = "✅ 分析完成";
             } else {
-                answerDiv.innerText = "分析異常：" + JSON.stringify(data.error || data);
+                answerDiv.innerText = "流量過載或錯誤，請稍候 30 秒再試一次。\n詳細資訊：" + JSON.stringify(data.error);
             }
         } catch (err) {
             answerDiv.innerText = "連線失敗：" + err.message;
