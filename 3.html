@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>診斷助手 - 雙模安全版</title>
+    <style>
+        body { font-family: "Microsoft JhengHei", sans-serif; max-width: 850px; margin: 30px auto; padding: 20px; background-color: #f0f4f8; }
+        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        .section { background: #eef2f7; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #007bff; }
+        .input-area { width: 100%; height: 120px; border: 1px solid #ddd; padding: 12px; border-radius: 8px; font-size: 16px; box-sizing: border-box; margin-bottom: 10px; resize: vertical; }
+        #transcript { border: 1px solid #ddd; padding: 15px; height: 100px; overflow-y: auto; background: #fff; border-radius: 8px; margin-bottom: 15px; white-space: pre-wrap; font-size: 14px; color: #555; }
+        #answer { border: 2px solid #28a745; padding: 25px; border-radius: 12px; background: #fafffa; white-space: pre-wrap; font-size: 1.1em; line-height: 1.8; min-height: 100px; }
+        button { padding: 12px 25px; font-size: 16px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; margin-right: 10px; transition: 0.2s; }
+        #startBtn { background-color: #007bff; color: white; }
+        #stopBtn { background-color: #dc3545; color: white; }
+        .btn-key { background-color: #5bc0de; color: white; margin-bottom: 20px; }
+        button:disabled { background-color: #ccc !important; cursor: not-allowed; }
+        .status-bar { font-weight: bold; color: #d9534f; margin-bottom: 10px; display: block; }
+        h3 { margin-top: 20px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>🩺 醫師診斷輔助 (語音/文字雙模版)</h2>
+    <span id="status" class="status-bar">請點擊藍色按鈕輸入 API Key 以啟用系統</span>
+
+    <button class="btn-key" onclick="inputKey()">🔑 第一步：輸入 API Key</button>
+
+    <div class="section">
+        <strong>2. 載入醫學知識庫 (.txt)：</strong><br><br>
+        <input type="file" id="fileInput" multiple accept=".txt">
+    </div>
+
+    <div class="section">
+        <strong>3. 輸入或錄製診間對話：</strong><br><br>
+        <textarea id="manualInput" class="input-area" placeholder="在此貼上文字內容或輸入對話..."></textarea>
+        
+        <div class="controls">
+            <button id="startBtn" disabled>🎤 開始錄音</button>
+            <button id="stopBtn" disabled>⏹️ 停止並分析</button>
+        </div>
+    </div>
+
+    <h3>👂 錄音轉譯文字 (自動生成)：</h3>
+    <div id="transcript">尚未錄音...</div>
+
+    <h3>💡 AI 診斷建議與處置方案：</h3>
+    <div id="answer">尚未分析。</div>
+</div>
+
+<script>
+    let _USER_KEY = "";
+    let auto_model_id = "";
+    let recognition, fullTranscript = "", uploadedKnowledge = "";
+
+    // 1. 輸入 Key 並自動偵測
+    async function inputKey() {
+        const key = prompt("請貼入您的 Google API Key (AIzaSy...):");
+        if (key) {
+            _USER_KEY = key;
+            const statusSpan = document.getElementById('status');
+            statusSpan.innerText = "⌛ 正在驗證 Key 並自動挑選最強模型...";
+            
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${_USER_KEY}`);
+                const data = await res.json();
+                
+                if (data.models) {
+                    const found = data.models.find(m => m.name.includes('gemini-3.1-flash') && m.supportedGenerationMethods.includes('generateContent')) ||
+                                  data.models.find(m => m.name.includes('gemini-3-flash') && m.supportedGenerationMethods.includes('generateContent')) ||
+                                  data.models.find(m => m.name.includes('flash') && m.supportedGenerationMethods.includes('generateContent'));
+                    
+                    auto_model_id = found ? found.name : data.models[0].name;
+                    statusSpan.innerText = "✅ 驗證成功！目前使用模型: " + auto_model_id.split('/')[1];
+                    statusSpan.style.color = "green";
+                    document.getElementById('startBtn').disabled = false;
+                } else {
+                    alert("Key 無效，請確認後重新輸入。");
+                    statusSpan.innerText = "❌ Key 驗證失敗";
+                }
+            } catch (e) { 
+                alert("連線失敗。");
+                statusSpan.innerText = "❌ 連線錯誤";
+            }
+        }
+    }
+
+    // 2. 語音辨識初始化
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'zh-TW';
+        recognition.onresult = (e) => {
+            let interim = "";
+            for (let i = e.resultIndex; i < e.results.length; ++i) {
+                if (e.results[i].isFinal) fullTranscript += e.results[i][0].transcript;
+                else interim += e.results[i][0].transcript;
+            }
+            document.getElementById('transcript').innerText = fullTranscript + interim;
+        };
+    }
+
+    // 3. 知識庫檔案讀取
+    document.getElementById('fileInput').onchange = (e) => {
+        uploadedKnowledge = "";
+        let count = 0;
+        for (let file of e.target.files) {
+            let reader = new FileReader();
+            reader.onload = (ev) => {
+                uploadedKnowledge += `\n--- 知識庫: ${file.name} ---\n${ev.target.result}\n`;
+                if (++count === e.target.files.length) {
+                    document.getElementById('status').innerText = "✅ 知識庫已就緒";
+                }
+            };
+            reader.readAsText(file);
+        }
+    };
+
+    // 4. 按鈕操作邏輯
+    document.getElementById('startBtn').onclick = () => {
+        if (!recognition) return alert("您的瀏覽器不支援語音辨識");
+        fullTranscript = "";
+        document.getElementById('transcript').innerText = "";
+        recognition.start();
+        document.getElementById('status').innerText = "🔴 正在聽取診間對話...";
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').disabled = false;
+    };
+
+    document.getElementById('stopBtn').onclick = async () => {
+        if(recognition) {
+            try { recognition.stop(); } catch(e) {}
+        }
+        document.getElementById('status').innerText = "⌛ AI 正在深度分析中...";
+        document.getElementById('stopBtn').disabled = true;
+        
+        // 獲取手動輸入內容
+        const manualText = document.getElementById('manualInput').value;
+        
+        // 組合內容：將錄音文字與手動輸入文字合併
+        const combinedDialogue = `[手動輸入內容]:\n${manualText}\n\n[錄音轉譯內容]:\n${fullTranscript}`;
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/${auto_model_id}:generateContent?key=${_USER_KEY}`;
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ 
+                            text: "你是精通醫學的助手。請根據以下知識庫分析對話（包含手動輸入及錄音內容），給予醫師診斷建議、可能疾病、處置方案與 ICD 代碼。\n\n【醫學知識庫】:\n" + uploadedKnowledge + "\n\n【醫病對話內容】:\n" + combinedDialogue 
+                        }]
+                    }]
+                })
+            });
+            const data = await response.json();
+            
+            if (data.candidates && data.candidates[0].content) {
+                document.getElementById('answer').innerText = data.candidates[0].content.parts[0].text;
+                document.getElementById('status').innerText = "✅ 診斷分析完成";
+            } else {
+                document.getElementById('answer').innerText = "分析異常：" + JSON.stringify(data.error || data);
+            }
+        } catch (err) {
+            alert("API 連線失敗。");
+        }
+        document.getElementById('startBtn').disabled = false;
+    };
+</script>
+</body>
+</html>
