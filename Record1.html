@@ -2,29 +2,28 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>診間紀錄 - AI 智慧備援版</title>
+    <title>診間紀錄 - AI 智慧備援終極版</title>
     <style>
         body { font-family: "Microsoft JhengHei", sans-serif; max-width: 850px; margin: 30px auto; padding: 20px; background-color: #f0f4f8; }
         .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
         .status-tag { display: inline-block; padding: 8px 15px; border-radius: 8px; font-weight: bold; margin-bottom: 15px; transition: 0.3s; }
         .ready { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; animation: pulse 1s infinite; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
         .fail { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
         .debug-box { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 8px; font-family: 'Consolas', monospace; font-size: 13px; height: 180px; overflow-y: auto; margin: 15px 0; border: 1px solid #34495e; }
-        #answer { border: 2px solid #28a745; padding: 25px; border-radius: 12px; background: #fff; min-height: 150px; white-space: pre-wrap; line-height: 1.8; font-size: 1.1em; box-shadow: inset 0 2px 5px rgba(0,0,0,0.05); }
+        #answer { border: 2px solid #28a745; padding: 25px; border-radius: 12px; background: #fff; min-height: 150px; white-space: pre-wrap; line-height: 1.8; font-size: 1.1em; }
         button { padding: 15px 25px; font-size: 16px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; transition: 0.3s; margin-right: 10px; }
         .btn-key { background: #3498db; color: white; }
         .btn-start { background: #2ecc71; color: white; }
         .btn-stop { background: #e74c3c; color: white; }
-        button:disabled { background: #bdc3c7 !important; cursor: not-allowed; opacity: 0.7; }
-        #transcriptPreview { font-style: italic; color: #7f8c8d; margin: 15px 0; padding: 10px; border-left: 4px solid #bdc3c7; background: #fdfdfd; }
+        button:disabled { background: #bdc3c7 !important; cursor: not-allowed; }
+        #transcriptPreview { font-style: italic; color: #7f8c8d; margin: 15px 0; padding: 10px; border-left: 4px solid #bdc3c7; background: #fdfdfd; min-height: 40px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🩺 診間紀錄 (AI 多路徑備援系統)</h2>
+    <h2>🩺 診間紀錄 (AI 多路徑備援 - 嚴格過濾版)</h2>
     <div id="statusTag" class="status-tag fail">等待輸入 API Key</div>
     
     <div>
@@ -34,10 +33,8 @@
     </div>
 
     <div id="debugOutput" class="debug-box">系統初始化...</div>
-
-    <div id="transcriptPreview">錄音內容預覽...</div>
-
-    <h3>💡 診後結構化摘要 (NotebookLM 格式)：</h3>
+    <div id="transcriptPreview">錄音預覽...</div>
+    <h3>💡 結構化摘要：</h3>
     <div id="answer">尚未分析。</div>
 </div>
 
@@ -63,22 +60,32 @@
                 const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${_USER_KEY}`);
                 const data = await res.json();
                 if (data.models) {
-                    // 建立優先序隊列
-                    const allFlash = data.models
-                        .filter(m => m.name.includes('flash') && m.supportedGenerationMethods.includes('generateContent'))
-                        .map(m => m.name);
-                    
-                    // 排序策略：3.1 優先，其次 1.5，最後 2.5
-                    model_queue = allFlash.sort((a, b) => {
-                        if (a.includes('3.1')) return -1;
-                        if (b.includes('3.1')) return 1;
-                        if (a.includes('1.5')) return -1;
-                        return 0;
-                    });
+                    // 核心修正：嚴格過濾掉 TTS, Image, Embedding 等非文字生成模型
+                    model_queue = data.models
+                        .filter(m => {
+                            const name = m.name.toLowerCase();
+                            return name.includes('flash') && 
+                                   m.supportedGenerationMethods.includes('generateContent') &&
+                                   !name.includes('tts') && 
+                                   !name.includes('image') && 
+                                   !name.includes('embedding') &&
+                                   !name.includes('vision');
+                        })
+                        .map(m => m.name)
+                        .sort((a, b) => { // 排序策略：3.1 > 1.5 > 其他
+                            if (a.includes('3.1')) return -1;
+                            if (b.includes('3.1')) return 1;
+                            if (a.includes('1.5')) return -1;
+                            return 0;
+                        });
 
-                    log(`已載入 ${model_queue.length} 個可用備援路徑`);
-                    updateStatus(`系統就緒: ${model_queue[0].split('/')[1]}`, "ready");
-                    document.getElementById('startBtn').disabled = false;
+                    log(`已成功篩選 ${model_queue.length} 個有效對話模型`);
+                    if(model_queue.length > 0) {
+                        updateStatus(`系統就緒: ${model_queue[0].split('/')[1]}`, "ready");
+                        document.getElementById('startBtn').disabled = false;
+                    } else {
+                        log("找不到適用的 Flash 模型，請檢查權限", "err");
+                    }
                 }
             } catch (e) { log("Key 驗證失敗: " + e.message, "err"); }
         }
@@ -115,13 +122,15 @@
     };
 
     document.getElementById('stopBtn').onclick = async () => {
-        recognition.stop();
+        if(recognition) recognition.stop();
         document.getElementById('stopBtn').disabled = true;
-        current_model_index = 0; // 重設回第一個模型開始嘗試
+        current_model_index = 0; 
         await executeAnalysis();
     };
 
     async function executeAnalysis() {
+        if (model_queue.length === 0) return log("無可用模型", "err");
+        
         const modelPath = model_queue[current_model_index];
         const modelName = modelPath.split('/')[1];
         
@@ -133,7 +142,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: "你是醫療速記員，請辨認語者(醫師/病患/家屬)並整理成結構化問答紀錄，保留所有醫學關鍵資訊：\n\n" + fullTranscript }] }]
+                    contents: [{ parts: [{ text: "請整理成醫學問答紀錄，標註語者(醫師/病患/家屬)：\n\n" + fullTranscript }] }]
                 })
             });
 
@@ -144,27 +153,18 @@
                 updateStatus("✅ 分析成功", "ready");
                 log(`分析完成 (服務引擎: ${modelName})`);
                 document.getElementById('startBtn').disabled = false;
-            } else if (response.status === 503 || response.status === 429) {
-                // 觸發備援機制
-                log(`${modelName} 擁塞 (HTTP ${response.status})`, "warn");
+            } else {
+                log(`${modelName} 回報錯誤: ${data.error ? data.error.message : '格式不符'}`, "warn");
                 current_model_index++;
-                
                 if (current_model_index < model_queue.length) {
-                    const nextModel = model_queue[current_model_index].split('/')[1];
-                    updateStatus(`⚠️ 擁塞！自動轉向 ${nextModel}...`, "warning");
-                    log(`切換至備援引擎: ${nextModel}`, "warn");
-                    // 延遲兩秒重試，避開脈衝
-                    setTimeout(executeAnalysis, 2000);
+                    log(`自動切換至下一個有效模型...`, "warn");
+                    setTimeout(executeAnalysis, 1500);
                 } else {
-                    updateStatus("❌ 所有 AI 路徑皆滿載", "fail");
-                    log("已嘗試所有可用模型，皆無法提供服務。請等候 10 秒後手動重試。", "err");
+                    updateStatus("❌ 所有模型嘗試完畢", "fail");
                     document.getElementById('startBtn').disabled = false;
                 }
-            } else {
-                log(`錯誤: ${data.error ? data.error.message : '未知錯誤'}`, "err");
-                updateStatus("分析中斷", "fail");
             }
-        } catch (err) { log("連線中斷: " + err.message, "err"); }
+        } catch (err) { log("網路錯誤: " + err.message, "err"); }
     }
 </script>
 </body>
