@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>診斷助手 - 最終穩定版</title>
+    <title>診斷助手 - Gemini 3 旗艦版</title>
     <style>
         body { font-family: "Microsoft JhengHei", sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f4f7f6; color: #333; }
         .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
@@ -22,7 +22,7 @@
 <body>
 
 <div class="card">
-    <h2>🩺 醫師診斷決策輔助系統</h2>
+    <h2>🩺 醫師診斷決策輔助系統 (Gemini 3 Flash)</h2>
 
     <div class="section">
         <strong>1. 載入知識庫 (.txt)：</strong>
@@ -44,7 +44,7 @@
 
 <script>
     // ==========================================
-    // 🔑 API Key 設定
+    // 🔑 API Key 設定 (請確認這組與截圖一致)
     // ==========================================
     const API_KEY = 'AIzaSyBfIbwNAKnDl-GlrkkH1Oxg4A6op0aAUYU'; 
 
@@ -77,8 +77,6 @@
                 transcriptDiv.innerHTML = fullTranscript + '<span style="color:gray">' + interim + '</span>';
                 transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
             };
-
-            recognition.onerror = (e) => { statusSpan.innerText = "錄音錯誤: " + e.error; };
         }
     } catch (e) { console.error("語音初始化失敗", e); }
 
@@ -106,46 +104,4 @@
             statusSpan.innerText = "🔴 聽取診間對話中...";
             startBtn.disabled = true;
             stopBtn.disabled = false;
-        } catch (e) { alert("無法啟動錄音，請檢查麥克風權限"); }
-    };
-
-    stopBtn.onclick = async () => {
-        recognition.stop();
-        statusSpan.innerText = "⌛ AI 分析中，請稍候...";
-        stopBtn.disabled = true;
-        await getDiagnosis();
-    };
-
-    // 4. AI 分析函式 (使用目前最穩定的 v1beta + 1.5-flash)
-    async function getDiagnosis() {
-        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + API_KEY;
-        
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{ 
-                            text: "你是一位精通醫療的專業助手。請優先根據以下「知識庫內容」分析「診間對話」，給予醫師診斷建議與可能的處置。\n\n【知識庫】：\n" + uploadedKnowledge + "\n\n【對話內容】：\n" + fullTranscript 
-                        }]
-                    }]
-                })
-            });
-
-            const data = await response.json();
-            
-            if (data.candidates && data.candidates[0].content) {
-                answerDiv.innerText = data.candidates[0].content.parts[0].text;
-                statusSpan.innerText = "✅ 分析完成";
-            } else {
-                answerDiv.innerText = "分析出錯，請確認 API 狀態或模型代碼：\n" + JSON.stringify(data.error || data);
-            }
-        } catch (err) {
-            answerDiv.innerText = "連線失敗：" + err.message;
-        }
-        startBtn.disabled = false;
-    }
-</script>
-</body>
-</html>
+        } catch (e) { alert("錄
