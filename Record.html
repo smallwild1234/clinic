@@ -2,55 +2,78 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>診間紀錄採集器 - NotebookLM 專用</title>
+    <title>診間紀錄 - 錯誤診斷專用版</title>
     <style>
-        body { font-family: sans-serif; max-width: 700px; margin: 20px auto; padding: 20px; line-height: 1.6; background-color: #f8f9fa; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .recording { color: red; font-weight: bold; animation: blink 1s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
-        #answer { background: #e9ecef; padding: 20px; border-radius: 8px; white-space: pre-wrap; margin-top: 20px; border: 1px solid #dee2e6; }
-        button { padding: 15px 30px; font-size: 18px; border-radius: 8px; border: none; cursor: pointer; margin-right: 10px; }
-        .btn-start { background: #28a745; color: white; }
-        .btn-stop { background: #dc3545; color: white; }
-        .btn-key { background: #6c757d; color: white; margin-bottom: 15px; }
+        body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f0f2f5; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .debug-box { background: #222; color: #0f0; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 13px; overflow: auto; max-height: 300px; margin-top: 10px; }
+        .status-tag { display: inline-block; padding: 5px 10px; border-radius: 4px; font-weight: bold; margin-bottom: 15px; }
+        .ready { background: #d4edda; color: #155724; }
+        .working { background: #fff3cd; color: #856404; }
+        .fail { background: #f8d7da; color: #721c24; }
+        #answer { border: 2px solid #007bff; padding: 15px; min-height: 100px; white-space: pre-wrap; background: #fff; margin-top: 15px; }
+        button { padding: 12px 20px; font-size: 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        #startBtn { background: #007bff; color: white; }
+        #stopBtn { background: #dc3545; color: white; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🩺 診間對話採集器</h2>
-    <div id="status">請先輸入 API Key</div>
-    <button class="btn-key" onclick="inputKey()">🔑 輸入 API Key</button>
-    <hr>
+    <h2>🩺 診間紀錄 (錯誤追蹤模式)</h2>
+    <div id="statusTag" class="status-tag fail">等待輸入 API Key</div>
     
     <div>
-        <button id="startBtn" class="btn-start" disabled>🎤 開始問診</button>
-        <button id="stopBtn" class="btn-stop" disabled>⏹️ 結束分析</button>
+        <button onclick="inputKey()">🔑 1. 設定 API Key</button>
+        <button id="startBtn" disabled>🎤 2. 開始錄音</button>
+        <button id="stopBtn" disabled>⏹️ 3. 停止並分析</button>
     </div>
 
-    <div id="recIndicator" style="display:none; margin-top:10px;">
-        <span class="recording">● REC</span> 正在記錄診間對話...
-    </div>
+    <h3>🔍 偵錯訊息 (如果失敗，請看這裡)：</h3>
+    <div id="debugOutput" class="debug-box">尚未開始連線...</div>
 
-    <h3>📝 對話摘要 (整理後)：</h3>
-    <div id="answer">分析結果將在此呈現，您可以直接複製到 NotebookLM。</div>
+    <h3>👂 錄音文字預覽：</h3>
+    <div id="transcriptPreview" style="color:#666; font-style:italic; border-bottom:1px solid #ccc; padding-bottom:10px;">尚未錄音</div>
+
+    <h3>💡 AI 整理結果：</h3>
+    <div id="answer">等待 AI 回應...</div>
 </div>
 
 <script>
     let _USER_KEY = "";
-    let auto_model_id = "";
+    let auto_model_id = "gemini-3.1-flash-preview"; // 預設 2026 最強型號
     let recognition, fullTranscript = "";
 
+    function logDebug(msg) {
+        const box = document.getElementById('debugOutput');
+        const now = new Date().toLocaleTimeString();
+        box.innerText += `[${now}] ${msg}\n`;
+        box.scrollTop = box.scrollHeight;
+        console.log(`[DEBUG] ${msg}`);
+    }
+
     async function inputKey() {
-        const key = prompt("請貼入 API Key:");
+        const key = prompt("請貼入您的 API Key:");
         if (key) {
-            _USER_KEY = key;
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${_USER_KEY}`);
-            const data = await res.json();
-            if (data.models) {
-                auto_model_id = data.models.find(m => m.name.includes('flash'))?.name || data.models[0].name;
-                document.getElementById('status').innerText = "✅ 系統就緒";
-                document.getElementById('startBtn').disabled = false;
+            _USER_KEY = key.trim();
+            logDebug("金鑰已輸入，開始偵測可用模型...");
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${_USER_KEY}`);
+                const data = await res.json();
+                
+                if (data.models) {
+                    const found = data.models.find(m => m.name.includes('flash'));
+                    auto_model_id = found ? found.name : data.models[0].name;
+                    logDebug(`✅ 成功連線！檢測到模型: ${auto_model_id}`);
+                    document.getElementById('statusTag').innerText = "系統就緒: " + auto_model_id.split('/')[1];
+                    document.getElementById('statusTag').className = "status-tag ready";
+                    document.getElementById('startBtn').disabled = false;
+                } else {
+                    logDebug("❌ 連線異常，回應內容: " + JSON.stringify(data));
+                    document.getElementById('statusTag').className = "status-tag fail";
+                }
+            } catch (e) {
+                logDebug("❌ Fetch 請求發生系統錯誤: " + e.message);
             }
         }
     }
@@ -59,48 +82,77 @@
     if (SpeechRecognition) {
         recognition = new SpeechRecognition();
         recognition.continuous = true;
-        recognition.interimResults = false;
+        recognition.interimResults = true;
         recognition.lang = 'zh-TW';
         recognition.onresult = (e) => {
+            let interim = "";
             for (let i = e.resultIndex; i < e.results.length; ++i) {
                 if (e.results[i].isFinal) fullTranscript += e.results[i][0].transcript + "\n";
+                else interim += e.results[i][0].transcript;
             }
+            document.getElementById('transcriptPreview').innerText = fullTranscript + interim;
         };
     }
 
     document.getElementById('startBtn').onclick = () => {
         fullTranscript = "";
         recognition.start();
-        document.getElementById('recIndicator').style.display = 'block';
+        logDebug("🎤 錄音啟動...");
+        document.getElementById('statusTag').innerText = "錄音中...";
+        document.getElementById('statusTag').className = "status-tag working";
         document.getElementById('startBtn').disabled = true;
         document.getElementById('stopBtn').disabled = false;
     };
 
     document.getElementById('stopBtn').onclick = async () => {
         recognition.stop();
-        document.getElementById('recIndicator').style.display = 'none';
-        document.getElementById('answer').innerText = "⌛ AI 正在標註語者並整理結構化紀錄...";
-
-        const url = `https://generativelanguage.googleapis.com/v1beta/${auto_model_id}:generateContent?key=${_USER_KEY}`;
+        logDebug("⏹️ 錄音停止，準備送出分析。");
+        document.getElementById('statusTag').innerText = "AI 運算中...";
+        document.getElementById('stopBtn').disabled = true;
         
+        await callGemini();
+    };
+
+    async function callGemini() {
+        const url = `https://generativelanguage.googleapis.com/v1beta/${auto_model_id}:generateContent?key=${_USER_KEY}`;
+        logDebug(`發送請求至: ${url}`);
+        
+        const payload = {
+            contents: [{
+                parts: [{ 
+                    text: "你是專業醫療速記員。請辨認語者並整理成結構化問答紀錄：\n\n內容：\n" + fullTranscript 
+                }]
+            }]
+        };
+
         try {
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{ 
-                            text: "你是一位專業的診間速記員。以下是一段未經整理的醫病對話原始文字。請根據語氣與內容，自動標註誰是『醫師』、誰是『病患』或『家屬』，並整理成一份結構清晰、適合放入 NotebookLM 知識庫的問答紀錄。\n\n【原始對話】：\n" + fullTranscript 
-                        }]
-                    }]
-                })
+                body: JSON.stringify(payload)
             });
+
+            logDebug(`伺服器回應狀態碼: ${response.status} (${response.statusText})`);
+            
             const data = await response.json();
-            document.getElementById('answer').innerText = data.candidates[0].content.parts[0].text;
-        } catch (err) { alert("分析失敗"); }
-        document.getElementById('startBtn').disabled = false;
-        document.getElementById('stopBtn').disabled = true;
-    };
+            
+            if (data.candidates && data.candidates[0].content) {
+                document.getElementById('answer').innerText = data.candidates[0].content.parts[0].text;
+                logDebug("🎉 分析完成！");
+                document.getElementById('statusTag').innerText = "完成";
+                document.getElementById('statusTag').className = "status-tag ready";
+            } else {
+                logDebug("⚠️ 回傳內容非預期格式，原始內容: " + JSON.stringify(data));
+                document.getElementById('answer').innerText = "分析失敗，詳情請見上方偵錯訊息。";
+                document.getElementById('statusTag').className = "status-tag fail";
+            }
+        } catch (err) {
+            logDebug("❌ 傳送過程中發生連線異常: " + err.message);
+            document.getElementById('statusTag').className = "status-tag fail";
+        } finally {
+            document.getElementById('startBtn').disabled = false;
+        }
+    }
 </script>
 </body>
 </html>
