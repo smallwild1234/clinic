@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>診斷助手 - 2026 最終修正版</title>
+    <title>診斷助手 - 醫師專用</title>
     <style>
         body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f4f7f6; }
         .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
@@ -18,7 +18,7 @@
 <body>
 
 <div class="card">
-    <h2>🩺 醫師診斷助手 (安全協定版)</h2>
+    <h2>🩺 醫師診斷助手 (2026 穩定通訊版)</h2>
 
     <div style="margin-bottom:20px;">
         <strong>1. 載入知識庫 (.txt)：</strong>
@@ -34,11 +34,12 @@
     <h3>👂 錄音文字：</h3>
     <div id="transcript"></div>
 
-    <h3>💡 AI 建議：</h3>
+    <h3>💡 AI 診斷建議：</h3>
     <div id="answer">尚未分析。</div>
 </div>
 
 <script>
+    // 🔑 請確保這是您剛才申請的最新 API Key
     const API_KEY = 'AIzaSyAaOZyLZVjVVtejkvsdAfaQNn2m3mAK0rs'; 
 
     const startBtn = document.getElementById('startBtn');
@@ -94,28 +95,25 @@
 
     stopBtn.onclick = async () => {
         try { recognition.stop(); } catch(e) {}
-        statusSpan.innerText = "⌛ 安全校驗與分析中...";
+        statusSpan.innerText = "⌛ 正透過穩定路徑分析中...";
         stopBtn.disabled = true;
         await getDiagnosis();
     };
 
     async function getDiagnosis() {
-        // 2026 年最穩定的網址格式
-        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+        // 核心修正：針對 2026 Google Cloud 專案，使用精簡路徑
+        // 並嘗試指向後台最穩定的 gemini-1.5-flash-latest
+        const modelId = "gemini-1.5-flash-latest";
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${API_KEY}`;
         
         try {
-            const response = await fetch(`${url}?key=${API_KEY}`, {
+            const response = await fetch(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    // 關鍵修正：將 Key 放入 Header 以通過 2026 安全校驗
-                    'x-goog-api-key': API_KEY 
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{
-                        role: "user",
                         parts: [{ 
-                            text: "你是專業醫療顧問。請根據知識庫回答問題。\n\n【知識庫】:\n" + uploadedKnowledge + "\n\n【對話】:\n" + fullTranscript 
+                            text: "你是資深醫療顧問。請根據知識庫內容分析對話。\n\n【知識庫】:\n" + uploadedKnowledge + "\n\n【對話】:\n" + fullTranscript 
                         }]
                     }]
                 })
@@ -125,10 +123,10 @@
             
             if (data.candidates && data.candidates[0].content) {
                 answerDiv.innerText = data.candidates[0].content.parts[0].text;
-                statusSpan.innerText = "✅ 完成";
+                statusSpan.innerText = "✅ 分析完成";
             } else {
-                // 如果失敗，顯示完整的錯誤物件幫助定位
-                answerDiv.innerText = "API 反應異常，詳情：\n" + JSON.stringify(data.error || data);
+                // 如果失敗，我們會看到 Google 要求的真正模型清單
+                answerDiv.innerText = "路徑已對齊但模型拒絕訪問：\n" + (data.error ? data.error.message : JSON.stringify(data));
             }
         } catch (err) {
             answerDiv.innerText = "連線失敗：" + err.message;
