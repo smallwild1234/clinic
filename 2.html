@@ -49,4 +49,103 @@
     const API_KEY = 'AIzaSyBfIbwNAKnDl-GlrkkH1Oxg4A6op0aAUYU'; 
 
     const startBtn = document.getElementById('startBtn');
-    const stopBtn
+    const stopBtn = document.getElementById('stopBtn');
+    const transcriptDiv = document.getElementById('transcript');
+    const answerDiv = document.getElementById('answer');
+    const statusSpan = document.getElementById('status');
+    const fileInput = document.getElementById('fileInput');
+
+    let recognition;
+    let fullTranscript = "";
+    let uploadedKnowledge = "";
+
+    // 1. 初始化語音辨識
+    try {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'zh-TW';
+
+            recognition.onresult = (event) => {
+                let interim = "";
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) fullTranscript += event.results[i][0].transcript;
+                    else interim += event.results[i][0].transcript;
+                }
+                transcriptDiv.innerHTML = fullTranscript + '<span style="color:gray">' + interim + '</span>';
+                transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+            };
+
+            recognition.onerror = (e) => { statusSpan.innerText = "錄音錯誤: " + e.error; };
+        }
+    } catch (e) { console.error("語音初始化失敗", e); }
+
+    // 2. 知識庫載入
+    fileInput.onchange = (e) => {
+        uploadedKnowledge = "";
+        let files = e.target.files;
+        let count = 0;
+        for (let file of files) {
+            let reader = new FileReader();
+            reader.onload = (ev) => {
+                uploadedKnowledge += `\n[文件:${file.name}]\n${ev.target.result}\n`;
+                if (++count === files.length) statusSpan.innerText = "✅ 知識庫已載入";
+            };
+            reader.readAsText(file);
+        }
+    };
+
+    // 3. 按鈕邏輯
+    startBtn.onclick = () => {
+        fullTranscript = "";
+        transcriptDiv.innerText = "";
+        try {
+            recognition.start();
+            statusSpan.innerText = "🔴 聽取診間對話中...";
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        } catch (e) { alert("無法啟動錄音，請檢查麥克風權限"); }
+    };
+
+    stopBtn.onclick = async () => {
+        recognition.stop();
+        statusSpan.innerText = "⌛ AI 分析中，請稍候...";
+        stopBtn.disabled = true;
+        await getDiagnosis();
+    };
+
+    // 4. AI 分析函式 (使用目前最穩定的 v1beta + 1.5-flash)
+    async function getDiagnosis() {
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + API_KEY;
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ 
+                            text: "你是一位精通醫療的專業助手。請優先根據以下「知識庫內容」分析「診間對話」，給予醫師診斷建議與可能的處置。\n\n【知識庫】：\n" + uploadedKnowledge + "\n\n【對話內容】：\n" + fullTranscript 
+                        }]
+                    }]
+                })
+            });
+
+            const data = await response.json();
+            
+            if (data.candidates && data.candidates[0].content) {
+                answerDiv.innerText = data.candidates[0].content.parts[0].text;
+                statusSpan.innerText = "✅ 分析完成";
+            } else {
+                answerDiv.innerText = "分析出錯，請確認 API 狀態或模型代碼：\n" + JSON.stringify(data.error || data);
+            }
+        } catch (err) {
+            answerDiv.innerText = "連線失敗：" + err.message;
+        }
+        startBtn.disabled = false;
+    }
+</script>
+</body>
+</html>
