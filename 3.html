@@ -12,11 +12,11 @@
         #transcript { border: 1px solid #ddd; padding: 15px; height: 100px; overflow-y: auto; background: #fff; border-radius: 8px; margin-bottom: 15px; white-space: pre-wrap; font-size: 14px; color: #555; }
         #answer { border: 2px solid #28a745; padding: 25px; border-radius: 12px; background: #fafffa; white-space: pre-wrap; font-size: 1.1em; line-height: 1.8; min-height: 100px; }
         button { padding: 12px 25px; font-size: 16px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; margin-right: 10px; transition: 0.2s; margin-top: 5px; }
+        .btn-key { background-color: #5bc0de; color: white; margin-bottom: 20px; width: 100%; }
         #startBtn { background-color: #007bff; color: white; }
         #stopBtn { background-color: #dc3545; color: white; }
-        #analyzeBtn { background-color: #28a745; color: white; float: right; } /* 綠色分析按鈕 */
-        .btn-key { background-color: #5bc0de; color: white; margin-bottom: 20px; }
-        button:disabled { background-color: #ccc !important; cursor: not-allowed; }
+        #analyzeBtn { background-color: #28a745; color: white; float: right; }
+        button:disabled { background-color: #ccc !important; cursor: not-allowed; opacity: 0.6; }
         .status-bar { font-weight: bold; color: #d9534f; margin-bottom: 10px; display: block; }
         .clearfix::after { content: ""; clear: both; display: table; }
     </style>
@@ -25,9 +25,9 @@
 
 <div class="card">
     <h2>🩺 醫師診斷輔助 (語音/文字雙模版)</h2>
-    <span id="status" class="status-bar">請點擊藍色按鈕輸入 API Key 以啟用系統</span>
+    <span id="status" class="status-bar">⚠️ 系統尚未啟用：請先輸入 API Key</span>
 
-    <button class="btn-key" onclick="inputKey()">🔑 第一步：輸入 API Key</button>
+    <button class="btn-key" id="keyBtn">🔑 第一步：輸入 API Key 以啟動系統</button>
 
     <div class="section">
         <strong>2. 載入醫學知識庫 (.txt)：</strong><br><br>
@@ -45,7 +45,7 @@
         </div>
     </div>
 
-    <h3>👂 錄音轉譯文字 (自動生成)：</h3>
+    <h3>👂 錄音轉譯文字：</h3>
     <div id="transcript">尚未錄音...</div>
 
     <h3>💡 AI 診斷建議與處置方案：</h3>
@@ -57,13 +57,19 @@
     let auto_model_id = "";
     let recognition, fullTranscript = "", uploadedKnowledge = "";
 
-    // 1. 輸入 Key 並自動偵測
-    async function inputKey() {
+    const statusSpan = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const keyBtn = document.getElementById('keyBtn');
+
+    // 1. 啟動 API Key 按鈕
+    keyBtn.onclick = async function() {
         const key = prompt("請貼入您的 Google API Key (AIzaSy...):");
-        if (key) {
-            _USER_KEY = key;
-            const statusSpan = document.getElementById('status');
-            statusSpan.innerText = "⌛ 正在驗證 Key 並自動挑選最強模型...";
+        if (key && key.trim() !== "") {
+            _USER_KEY = key.trim();
+            statusSpan.innerText = "⌛ 正在驗證 Key 並連結 Gemini 3.1 引擎...";
+            statusSpan.style.color = "blue";
             
             try {
                 const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${_USER_KEY}`);
@@ -75,18 +81,27 @@
                                   data.models.find(m => m.name.includes('flash'));
                     
                     auto_model_id = found ? found.name : data.models[0].name;
-                    statusSpan.innerText = "✅ 驗證成功！目前使用模型: " + auto_model_id.split('/')[1];
+                    
+                    statusSpan.innerText = "✅ 系統已啟動！使用模型: " + auto_model_id.split('/')[1];
                     statusSpan.style.color = "green";
-                    document.getElementById('startBtn').disabled = false;
-                    document.getElementById('analyzeBtn').disabled = false; // 啟用分析按鈕
+                    
+                    // 關鍵修正：強制啟用所有功能按鈕
+                    startBtn.disabled = false;
+                    analyzeBtn.disabled = false;
+                    keyBtn.innerText = "🔑 Key 已生效 (點擊可更換)";
+                    keyBtn.style.backgroundColor = "#28a745";
                 } else {
-                    alert("Key 無效，請確認後重新輸入。");
+                    statusSpan.innerText = "❌ Key 無效，請確認後重新輸入。";
+                    statusSpan.style.color = "red";
                 }
-            } catch (e) { alert("連線失敗。"); }
+            } catch (e) { 
+                statusSpan.innerText = "❌ 連線失敗，請檢查網路。";
+                statusSpan.style.color = "red";
+            }
         }
-    }
+    };
 
-    // 2. 語音辨識初始化
+    // 2. 語音辨識
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
         recognition = new SpeechRecognition();
@@ -103,7 +118,7 @@
         };
     }
 
-    // 3. 知識庫檔案讀取
+    // 3. 知識庫處理
     document.getElementById('fileInput').onchange = (e) => {
         uploadedKnowledge = "";
         let count = 0;
@@ -112,35 +127,68 @@
             reader.onload = (ev) => {
                 uploadedKnowledge += `\n--- 知識庫: ${file.name} ---\n${ev.target.result}\n`;
                 if (++count === e.target.files.length) {
-                    document.getElementById('status').innerText = "✅ 知識庫已就緒";
+                    statusSpan.innerText = "✅ 知識庫載入完成";
                 }
             };
             reader.readAsText(file);
         }
     };
 
-    // 4. 按鈕操作邏輯
-    document.getElementById('startBtn').onclick = () => {
-        if (!recognition) return alert("您的瀏覽器不支援語音辨識");
+    // 4. 錄音操作邏輯
+    startBtn.onclick = () => {
+        if (!recognition) return alert("瀏覽器不支援錄音");
         fullTranscript = "";
         document.getElementById('transcript').innerText = "";
         recognition.start();
-        document.getElementById('status').innerText = "🔴 正在聽取診間對話...";
-        document.getElementById('startBtn').disabled = true;
-        document.getElementById('stopBtn').disabled = false;
+        statusSpan.innerText = "🔴 診間錄音中...";
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
     };
 
-    document.getElementById('stopBtn').onclick = () => {
+    stopBtn.onclick = () => {
         if(recognition) { try { recognition.stop(); } catch(e) {} }
-        document.getElementById('status').innerText = "✅ 錄音已結束，可點擊綠色按鈕進行分析";
-        document.getElementById('startBtn').disabled = false;
-        document.getElementById('stopBtn').disabled = true;
+        statusSpan.innerText = "✅ 錄音完畢，可點擊「啟動分析」";
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
     };
 
-    // 5. 獨立的分析函式
-    document.getElementById('analyzeBtn').onclick = async () => {
-        document.getElementById('status').innerText = "⌛ AI 正在分析內容，請稍候...";
-        document.getElementById('analyzeBtn').disabled = true;
+    // 5. 獨立分析邏輯
+    analyzeBtn.onclick = async () => {
+        if (!_USER_KEY) return alert("請先輸入 API Key");
+        
+        statusSpan.innerText = "⌛ AI 正在深度運算中...";
+        analyzeBtn.disabled = true;
         
         const manualText = document.getElementById('manualInput').value;
-        const combinedDialogue = `[手動輸入內容]:\n${manual
+        const combinedDialogue = `[手動輸入]:\n${manualText}\n\n[錄音轉譯]:\n${fullTranscript}`;
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/${auto_model_id}:generateContent?key=${_USER_KEY}`;
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ 
+                            text: "你是精通醫學的助手。請根據以下知識庫分析對話，給予診斷建議與處置方案。\n\n【醫學知識庫】:\n" + uploadedKnowledge + "\n\n【對話內容】:\n" + combinedDialogue 
+                        }]
+                    }]
+                })
+            });
+            const data = await response.json();
+            
+            if (data.candidates) {
+                document.getElementById('answer').innerText = data.candidates[0].content.parts[0].text;
+                statusSpan.innerText = "✅ 分析完成";
+            } else {
+                document.getElementById('answer').innerText = "分析錯誤：" + JSON.stringify(data.error || data);
+            }
+        } catch (err) {
+            alert("API 連線失敗");
+        }
+        analyzeBtn.disabled = false;
+    };
+</script>
+</body>
+</html>
